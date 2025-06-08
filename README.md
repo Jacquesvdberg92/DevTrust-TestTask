@@ -20,7 +20,10 @@ This repository contains two test task solutions:
 
 ### ASP.NET Core API
 - Configure your database connection string in `appsettings.json`
-- Run the project and access Swagger UI at `/swagger` to test the API
+- Migrations are already created — just update the database by running:
+  ```powershell
+  Update-Database -Context AppDbContext
+
 
 ### Delphi VCL Contact Manager
 - Open the Delphi project in the IDE
