@@ -1,0 +1,41 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\jacqu\\OneDrive\\Desktop\\Projects\\CSharProject\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{C49A0484-7673-4DA9-8C36-4E6D82E0A701}|PersonManager\\PersonManager.csproj|c:\\users\\jacqu\\onedrive\\desktop\\projects\\csharproject\\personmanager\\controllers\\personcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{C49A0484-7673-4DA9-8C36-4E6D82E0A701}|PersonManager\\PersonManager.csproj|solutionrelative:personmanager\\controllers\\personcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 247,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:129:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "PersonController.cs",
+              "DocumentMoniker": "C:\\Users\\jacqu\\OneDrive\\Desktop\\Projects\\CSharProject\\PersonManager\\Controllers\\PersonController.cs",
+              "RelativeDocumentMoniker": "PersonManager\\Controllers\\PersonController.cs",
+              "ToolTip": "C:\\Users\\jacqu\\OneDrive\\Desktop\\Projects\\CSharProject\\PersonManager\\Controllers\\PersonController.cs",
+              "RelativeToolTip": "PersonManager\\Controllers\\PersonController.cs",
+              "ViewState": "AgIAABUAAAAAAAAAAAAAAE8AAAAuAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-06-08T08:58:59.949Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

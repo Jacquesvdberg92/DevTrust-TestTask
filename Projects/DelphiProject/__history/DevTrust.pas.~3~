@@ -1,0 +1,667 @@
+unit DevTrust;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.Grids, Vcl.StdCtrls, AddContactForm,
+  Vcl.Menus, System.Net.HttpClient, System.Net.HttpClientComponent, System.JSON, System.Net.URLClient,
+  System.Generics.Collections, System.UITypes;
+
+type
+  TfrmContactManager = class(TForm)
+    sgContactDisplay: TStringGrid;
+    btnAdd: TButton;
+    btnDelete: TButton;
+    sdSaveDialogForSaveButton: TSaveDialog;
+    odOpenDialogForLoadFileButton: TOpenDialog;
+    mnuMainMenu: TMainMenu;
+    mmFile: TMenuItem;
+    mnuFetchContacts: TMenuItem;
+    mnuPushAPIContacts: TMenuItem;
+    gbFilters: TGroupBox;
+    edtName: TEdit;
+    edtLastName: TEdit;
+    edtCity: TEdit;
+    lblName: TLabel;
+    lblLastName: TLabel;
+    lblCity: TLabel;
+    btnFilter: TButton;
+    N1: TMenuItem;
+    mnuLoadFile: TMenuItem;
+    mnuExport: TMenuItem;
+    N2: TMenuItem;
+    mnuExit: TMenuItem;
+    procedure FormCreate(Sender: TObject);
+    procedure btnAddClick(Sender: TObject);
+    procedure btnDeleteClick(Sender: TObject);
+    procedure sgContactDisplaySelectCell(Sender: TObject; ACol, ARow: LongInt;
+      var CanSelect: Boolean);
+    procedure ResizeGridColumns;
+    procedure mnuFetchContactsClick(Sender: TObject);
+    procedure mnuPushAPIContactsClick(Sender: TObject);
+    procedure SendPersonToAPI(const FirstName, LastName, City, AddressLine: string);
+    procedure btnFilterClick(Sender: TObject);
+    procedure mnuExitClick(Sender: TObject);
+    procedure mnuLoadFileClick(Sender: TObject);
+    procedure mnuExportClick(Sender: TObject);
+  private
+
+  public
+
+  end;
+
+var
+  frmContactManager: TfrmContactManager;
+
+implementation
+
+{$R *.dfm}
+
+/////----- Delete Button -----/////
+procedure TfrmContactManager.btnDeleteClick(Sender: TObject);
+var
+  RowToDelete, i: Integer;
+  HttpClient: THTTPClient;
+  Response: IHTTPResponse;
+  PersonId: string;
+  ApiUrl: string;
+begin
+  RowToDelete := sgContactDisplay.Row;
+
+  if RowToDelete <= 0 then
+  begin
+    MessageDlg('Please select a valid contact to delete.',
+               mtWarning, [mbOK], 0);
+    Exit;
+  end;
+
+  PersonId := sgContactDisplay.Cells[5, RowToDelete];
+  if PersonId = '' then
+  begin
+    ShowMessage('No Person ID found for this contact.');
+    Exit;
+  end;
+
+  ApiUrl := 'https://localhost:7262/api/person/' + PersonId;
+
+  HttpClient := THTTPClient.Create;
+  try
+    Response := HttpClient.Delete(ApiUrl);
+    if (Response.StatusCode = 200) or (Response.StatusCode = 204) then
+    begin
+      // Remove from grid
+      for i := RowToDelete to sgContactDisplay.RowCount - 2 do
+      begin
+        sgContactDisplay.Rows[i].Assign(sgContactDisplay.Rows[i + 1]);
+      end;
+      sgContactDisplay.RowCount := sgContactDisplay.RowCount - 1;
+
+      // Renumber the "No." column
+      for i := 1 to sgContactDisplay.RowCount - 1 do
+      begin
+        sgContactDisplay.Cells[0, i] := IntToStr(i);
+      end;
+
+      ShowMessage('Contact deleted successfully.');
+    end
+    else
+    begin
+      MessageDlg('Failed to delete contact.' + sLineBreak +
+                 'Status: ' + Response.StatusCode.ToString + sLineBreak +
+                 'Response: ' + Response.ContentAsString(TEncoding.UTF8),
+                 mtError, [mbOK], 0);
+    end;
+  finally
+    HttpClient.Free;
+  end;
+end;
+/////----- End of Delete Button -----/////
+
+/////----- Creates query to filter contacts -----/////
+procedure TfrmContactManager.btnFilterClick(Sender: TObject);
+var
+  HttpClient: THTTPClient;
+  ContentStream: TStringStream;
+  Response: IHTTPResponse;
+  JsonRequest: TJSONObject;
+  JsonValue: TJSONValue;
+  JsonArray: TJSONArray;
+  JsonObject: TJSONObject;
+  AddressObj: TJSONObject;
+  Headers: TNetHeaders;
+  i, Row: Integer;
+  FilterFirstName, FilterLastName, FilterCity: string;
+begin
+  // Read values from filter edit boxes
+  FilterFirstName := edtName.Text;
+  FilterLastName := edtLastName.Text;
+  FilterCity := edtCity.Text;
+
+  HttpClient := THTTPClient.Create;
+  try
+    JsonRequest := TJSONObject.Create;
+    try
+      // Add filters only if not empty
+      if FilterFirstName <> '' then
+        JsonRequest.AddPair('firstName', FilterFirstName);
+      if FilterLastName <> '' then
+        JsonRequest.AddPair('lastName', FilterLastName);
+      if FilterCity <> '' then
+        JsonRequest.AddPair('city', FilterCity);
+
+      ContentStream := TStringStream.Create(JsonRequest.ToJSON, TEncoding.UTF8);
+      try
+        SetLength(Headers, 1);
+        Headers[0].Name := 'Content-Type';
+        Headers[0].Value := 'application/json';
+
+        Response := HttpClient.Post('https://localhost:7262/api/person/query', ContentStream, nil, Headers);
+
+        if Response.StatusCode = 200 then
+        begin
+          JsonValue := TJSONObject.ParseJSONValue(Response.ContentAsString(TEncoding.UTF8));
+          try
+            if (JsonValue <> nil) and (JsonValue is TJSONArray) then
+            begin
+              JsonArray := JsonValue as TJSONArray;
+              sgContactDisplay.RowCount := 1;
+              Row := 1;
+
+              for i := 0 to JsonArray.Count - 1 do
+              begin
+                JsonObject := JsonArray.Items[i] as TJSONObject;
+
+                sgContactDisplay.RowCount := sgContactDisplay.RowCount + 1;
+                sgContactDisplay.Cells[0, Row] := IntToStr(Row);
+                sgContactDisplay.Cells[1, Row] := JsonObject.GetValue<string>('firstName');
+                sgContactDisplay.Cells[2, Row] := JsonObject.GetValue<string>('lastName');
+
+                AddressObj := JsonObject.GetValue<TJSONObject>('address');
+                if Assigned(AddressObj) then
+                begin
+                  sgContactDisplay.Cells[3, Row] := AddressObj.GetValue<string>('city');
+                  sgContactDisplay.Cells[4, Row] := AddressObj.GetValue<string>('addressLine');
+                end
+                else
+                begin
+                  sgContactDisplay.Cells[3, Row] := '';
+                  sgContactDisplay.Cells[4, Row] := '';
+                end;
+
+                Inc(Row);
+              end;
+            end
+            else
+              ShowMessage('Unexpected JSON format received.');
+          finally
+            JsonValue.Free;
+          end;
+        end
+        else
+        begin
+          MessageDlg('Filter request failed.' + sLineBreak +
+                     'Status: ' + Response.StatusCode.ToString + sLineBreak +
+                     'Response: ' + Response.ContentAsString(TEncoding.UTF8),
+                     mtError, [mbOK], 0);
+        end;
+      finally
+        ContentStream.Free;
+      end;
+    finally
+      JsonRequest.Free;
+    end;
+  finally
+    HttpClient.Free;
+  end;
+end;
+/////----- End of Creates query to filter contacts -----/////
+
+
+/////----- Creates String Grid on form Create -----/////
+procedure TfrmContactManager.FormCreate(Sender: TObject);
+begin
+  sgContactDisplay.ColCount := 6; // 5 visible + 1 hidden for Id
+  sgContactDisplay.RowCount := 1;
+
+  sgContactDisplay.Cells[0, 0] := 'No.';
+  sgContactDisplay.Cells[1, 0] := 'First Name';
+  sgContactDisplay.Cells[2, 0] := 'Last Name';
+  sgContactDisplay.Cells[3, 0] := 'City';
+  sgContactDisplay.Cells[4, 0] := 'Address Line';
+  sgContactDisplay.Cells[5, 0] := 'Id'; // Hidden column
+
+  sgContactDisplay.ColWidths[5] := 0; // Hide the Id column
+  sgContactDisplay.Cells[5, 0] := ''; // Hide header text
+
+  sgContactDisplay.Options := sgContactDisplay.Options + [goRowSelect];
+  sgContactDisplay.FixedCols := 1;
+  sgContactDisplay.ColWidths[0] := 40;
+
+  ResizeGridColumns;
+end;
+/////----- End of Creates String Grid on form Create -----/////
+
+/////----- Menu Close Button -----/////
+procedure TfrmContactManager.mnuExitClick(Sender: TObject);
+begin
+  Close;
+end;
+/////----- End Of Menu Close Button -----/////
+
+/////----- Exports Contacts to CSV file -----/////
+procedure TfrmContactManager.mnuExportClick(Sender: TObject);
+var
+  i: Integer;
+  ContactFile: TextFile;
+  FileName: string;
+begin
+  sdSaveDialogForSaveButton.Title := 'Save Contacts';
+  sdSaveDialogForSaveButton.Filter := 'CSV Files (*.csv)|*.csv|All Files (*.*)|*.*';
+  sdSaveDialogForSaveButton.DefaultExt := 'csv';
+
+  if sdSaveDialogForSaveButton.Execute then
+  begin
+    FileName := sdSaveDialogForSaveButton.FileName;
+
+    AssignFile(ContactFile, FileName);
+    Rewrite(ContactFile);
+    try
+      // Skip header row (Row 0), start from Row 1
+      for i := 1 to sgContactDisplay.RowCount - 1 do
+      begin
+        WriteLn(ContactFile,
+          sgContactDisplay.Cells[1, i] + ',' +
+          sgContactDisplay.Cells[2, i] + ',' +
+          sgContactDisplay.Cells[3, i] + ',' +
+          sgContactDisplay.Cells[4, i]);
+      end;
+      ShowMessage('Contacts saved to: ' + FileName);
+    finally
+      CloseFile(ContactFile);
+    end;
+  end;
+end;
+/////----- End of Exports Contacts to CSV file -----/////
+
+/////----- Fetches all contacts from API -----/////
+procedure TfrmContactManager.mnuFetchContactsClick(Sender: TObject);
+var
+  HttpClient: THTTPClient;
+  ContentStream: TStringStream;
+  Response: IHTTPResponse;
+  JsonValue: TJSONValue;
+  JsonArray: TJSONArray;
+  JsonObject: TJSONObject;
+  AddressObj: TJSONObject;
+  Headers: TNetHeaders;
+  i, Row: Integer;
+begin
+  HttpClient := THTTPClient.Create;
+  try
+    // Set content-type header
+    SetLength(Headers, 1);
+    Headers[0].Name := 'Content-Type';
+    Headers[0].Value := 'application/json';
+
+    // Send empty JSON object to fetch all records
+    ContentStream := TStringStream.Create('{}', TEncoding.UTF8);
+    try
+      Response := HttpClient.Post('https://localhost:7262/api/person/query', ContentStream, nil, Headers);
+
+      if Response.StatusCode = 200 then
+      begin
+        JsonValue := TJSONObject.ParseJSONValue(Response.ContentAsString(TEncoding.UTF8));
+        try
+          if (JsonValue <> nil) and (JsonValue is TJSONArray) then
+          begin
+            JsonArray := JsonValue as TJSONArray;
+            sgContactDisplay.RowCount := 1; // Clear grid except header
+            Row := 1;
+
+            for i := 0 to JsonArray.Count - 1 do
+            begin
+              JsonObject := JsonArray.Items[i] as TJSONObject;
+
+              sgContactDisplay.RowCount := sgContactDisplay.RowCount + 1;
+              sgContactDisplay.Cells[0, Row] := IntToStr(Row);
+              sgContactDisplay.Cells[1, Row] := JsonObject.GetValue<string>('firstName');
+              sgContactDisplay.Cells[2, Row] := JsonObject.GetValue<string>('lastName');
+              sgContactDisplay.Cells[5, Row] := JsonObject.GetValue<string>('id');
+
+              // Get the nested address object
+              AddressObj := JsonObject.GetValue<TJSONObject>('address');
+              if Assigned(AddressObj) then
+              begin
+                sgContactDisplay.Cells[3, Row] := AddressObj.GetValue<string>('city');
+                sgContactDisplay.Cells[4, Row] := AddressObj.GetValue<string>('addressLine');
+              end
+              else
+              begin
+                sgContactDisplay.Cells[3, Row] := '';
+                sgContactDisplay.Cells[4, Row] := '';
+              end;
+
+              Inc(Row);
+            end;
+          end
+          else
+            MessageDlg('Unexpected JSON format received.',
+              mtError, [mbOK], 0);
+        finally
+          JsonValue.Free;
+        end;
+      end
+      else
+      begin
+        MessageDlg('Failed to fetch data.' + sLineBreak +
+                   'Status: ' + Response.StatusCode.ToString + sLineBreak +
+                   'Response: ' + Response.ContentAsString(TEncoding.UTF8),
+                   mtError, [mbOK], 0);
+      end;
+    finally
+      ContentStream.Free;
+    end;
+  finally
+    HttpClient.Free;
+  end;
+end;
+/////----- End of Fetches all contacts from API -----/////
+
+/////----- Loads CSV File -----/////
+procedure TfrmContactManager.mnuLoadFileClick(Sender: TObject);
+var
+  OpenDialog: TOpenDialog;
+  Reader: TStreamReader;
+  FileName, Line: string;
+  Fields: TArray<string>;
+  Row: Integer;
+begin
+  OpenDialog := TOpenDialog.Create(Self);
+  try
+    OpenDialog.Filter := 'CSV or Text Files|*.csv;*.txt';
+    OpenDialog.Title := 'Select Contact File to Load';
+
+    if OpenDialog.Execute then
+    begin
+      FileName := OpenDialog.FileName;
+      Reader := TStreamReader.Create(FileName);
+      try
+        sgContactDisplay.RowCount := 1; // Reset grid (keep headers)
+        Row := 1;
+        while not Reader.EndOfStream do
+        begin
+          Line := Reader.ReadLine.Trim;
+          if Line = '' then
+            Continue;
+
+          Fields := Line.Split([',']); // CSV format
+          if Length(Fields) >= 4 then
+          begin
+            sgContactDisplay.RowCount := Row + 1;
+            sgContactDisplay.Cells[0, Row] := IntToStr(Row); // Auto-number
+            sgContactDisplay.Cells[1, Row] := Fields[0];
+            sgContactDisplay.Cells[2, Row] := Fields[1];
+            sgContactDisplay.Cells[3, Row] := Fields[2];
+            sgContactDisplay.Cells[4, Row] := Fields[3];
+            Inc(Row);
+          end;
+        end;
+      finally
+        Reader.Free;
+      end;
+    end;
+  finally
+    OpenDialog.Free;
+  end;
+end;
+/////----- End of Loads CSV File -----/////
+
+/////----- Push Bulk contacts to API -----/////
+procedure TfrmContactManager.mnuPushAPIContactsClick(Sender: TObject);
+var
+  i: Integer;
+  FirstName, LastName, City, AddressLine: string;
+  PersonsArray: TJSONArray;
+  PersonObj, AddressObj: TJSONObject;
+  HttpClient: THTTPClient;
+  ContentStream: TStringStream;
+  Response: IHTTPResponse;
+  Headers: TNetHeaders;
+begin
+  if sgContactDisplay.RowCount <= 1 then
+  begin
+     MessageDlg('No contacts to send.',
+                TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], 0);
+     Exit;
+  end;
+
+  PersonsArray := TJSONArray.Create;
+  try
+    for i := 1 to sgContactDisplay.RowCount - 1 do // Start from row 1 to skip headers
+    begin
+      FirstName := sgContactDisplay.Cells[1, i];
+      LastName := sgContactDisplay.Cells[2, i];
+      City := sgContactDisplay.Cells[3, i];
+      AddressLine := sgContactDisplay.Cells[4, i];
+
+      if (FirstName <> '') and (LastName <> '') then
+      begin
+        PersonObj := TJSONObject.Create;
+        PersonObj.AddPair('firstName', FirstName);
+        PersonObj.AddPair('lastName', LastName);
+
+        // Add address as nested object
+        AddressObj := TJSONObject.Create;
+        AddressObj.AddPair('city', City);
+        AddressObj.AddPair('addressLine', AddressLine);
+        PersonObj.AddPair('address', AddressObj);
+
+        PersonsArray.AddElement(PersonObj);
+      end;
+    end;
+
+    if PersonsArray.Count = 0 then
+    begin
+      MessageDlg('No valid contacts to send.' + Response.StatusCode.ToString, mtError, [mbOK], 0);
+      Exit;
+    end;
+
+    HttpClient := THTTPClient.Create;
+    try
+      SetLength(Headers, 1);
+      Headers[0].Name := 'Content-Type';
+      Headers[0].Value := 'application/json';
+
+      ContentStream := TStringStream.Create(PersonsArray.ToJSON, TEncoding.UTF8);
+      try
+        Response := HttpClient.Post('https://localhost:7262/api/person/bulk', ContentStream, nil, Headers);
+
+        if Response.StatusCode = 200 then
+          ShowMessage('All contacts sent successfully.')
+        else
+        begin
+          MessageDlg('Failed to send contacts. Status: ' + Response.StatusCode.ToString, mtError, [mbOK], 0);
+        end;
+      finally
+        ContentStream.Free;
+      end;
+    finally
+      HttpClient.Free;
+    end;
+  finally
+    PersonsArray.Free;
+  end;
+end;
+/////----- End of Push Bulk contacts to API -----/////
+
+///// ----- Sends Person data to the API -----/////
+procedure TfrmContactManager.SendPersonToAPI(const FirstName, LastName, City, AddressLine: string);
+var
+  HttpClient: THTTPClient;
+  JsonToSend, AddressObj: TJSONObject;
+  ContentStream: TStringStream;
+  Response: IHTTPResponse;
+  Headers: TNetHeaders;
+begin
+  HttpClient := THTTPClient.Create;
+  try
+    JsonToSend := TJSONObject.Create;
+    AddressObj := TJSONObject.Create;
+    try
+      // Address object
+      AddressObj.AddPair('city', City);
+      AddressObj.AddPair('addressLine', AddressLine);
+
+      // Main person object
+      JsonToSend.AddPair('firstName', FirstName);
+      JsonToSend.AddPair('lastName', LastName);
+      JsonToSend.AddPair('address', AddressObj);
+
+      ContentStream := TStringStream.Create(JsonToSend.ToJSON, TEncoding.UTF8);
+      try
+        SetLength(Headers, 1);
+        Headers[0].Name := 'Content-Type';
+        Headers[0].Value := 'application/json';
+
+        HttpClient.SecureProtocols := [THTTPSecureProtocol.TLS12];
+
+        Response := HttpClient.Post('https://localhost:7262/api/person', ContentStream, nil, Headers);
+
+        if (Response.StatusCode = 200) or (Response.StatusCode = 201) then
+          ShowMessage('Person sent successfully!')
+        else
+        begin
+          MessageDlg('Failed to send person.' + sLineBreak +
+                     'Status: ' + Response.StatusCode.ToString + sLineBreak +
+                     'Response: ' + Response.ContentAsString(TEncoding.UTF8),
+                     TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], 0);
+        end;
+
+      finally
+        ContentStream.Free;
+      end;
+    finally
+      JsonToSend.Free;
+    end;
+  finally
+    HttpClient.Free;
+  end;
+end;
+///// ----- End of Sends Person data to the API -----/////
+
+
+///// ----- Makes Headers not selectable -----/////
+procedure TfrmContactManager.sgContactDisplaySelectCell(Sender: TObject; ACol,
+  ARow: LongInt; var CanSelect: Boolean);
+begin
+  // Disallow selecting the header row
+  CanSelect := ARow > 0;
+end;
+///// ----- End of Makes Headers not selectable -----/////
+
+
+///// ----- Stretched Col to be full length -----/////
+procedure TfrmContactManager.ResizeGridColumns;
+var
+  RemainingWidth, EqualWidth: Integer;
+  i: Integer;
+begin
+  RemainingWidth := sgContactDisplay.ClientWidth - sgContactDisplay.ColWidths[0] - 2;
+  EqualWidth := RemainingWidth div (sgContactDisplay.ColCount - 1);
+
+  for i := 1 to sgContactDisplay.ColCount - 1 do
+    sgContactDisplay.ColWidths[i] := EqualWidth;
+end;
+///// ----- End of Stretched Col to be full length -----/////
+
+
+/////----- Calls Create Form -----/////
+procedure TfrmContactManager.btnAddClick(Sender: TObject);
+var
+  NewRow: Integer;
+  AddForm: TfrmAddContact;
+  HttpClient: THTTPClient;
+  ContentStream: TStringStream;
+  Response: IHTTPResponse;
+  Headers: TNetHeaders;
+  PersonObj, AddressObj: TJSONObject;
+  FirstName, LastName, City, AddressLine: string;
+begin
+  AddForm := TfrmAddContact.Create(Self);
+  try
+    if AddForm.ShowModal = mrOk then
+    begin
+      FirstName := AddForm.edtFirstName.Text;
+      LastName := AddForm.edtLastName.Text;
+      City := AddForm.edtCity.Text;
+      AddressLine := AddForm.edtAddressLine.Text;
+
+      // Build JSON object for the new person
+      PersonObj := TJSONObject.Create;
+      try
+        PersonObj.AddPair('firstName', FirstName);
+        PersonObj.AddPair('lastName', LastName);
+
+        AddressObj := TJSONObject.Create;
+        AddressObj.AddPair('city', City);
+        AddressObj.AddPair('addressLine', AddressLine);
+        PersonObj.AddPair('address', AddressObj);
+
+        HttpClient := THTTPClient.Create;
+        try
+          SetLength(Headers, 1);
+          Headers[0].Name := 'Content-Type';
+          Headers[0].Value := 'application/json';
+
+          ContentStream := TStringStream.Create(PersonObj.ToJSON, TEncoding.UTF8);
+          try
+            Response := HttpClient.Post('https://localhost:7262/api/person', ContentStream, nil, Headers);
+
+            if (Response.StatusCode = 201) or (Response.StatusCode = 200) then
+            begin
+              // Parse response to get the new Id
+              var JsonValue := TJSONObject.ParseJSONValue(Response.ContentAsString(TEncoding.UTF8));
+              try
+                var NewId := '';
+                if (JsonValue <> nil) and (JsonValue is TJSONObject) then
+                  NewId := (JsonValue as TJSONObject).GetValue<string>('id');
+
+                NewRow := sgContactDisplay.RowCount;
+                sgContactDisplay.RowCount := NewRow + 1;
+
+                sgContactDisplay.Cells[0, NewRow] := IntToStr(NewRow); // Auto-increment No.
+                sgContactDisplay.Cells[1, NewRow] := FirstName;
+                sgContactDisplay.Cells[2, NewRow] := LastName;
+                sgContactDisplay.Cells[3, NewRow] := City;
+                sgContactDisplay.Cells[4, NewRow] := AddressLine;
+                sgContactDisplay.Cells[5, NewRow] := NewId; // Store the Id
+                ShowMessage('Contact added successfully.');
+              finally
+                JsonValue.Free;
+              end;
+            end
+            else
+            begin
+              MessageDlg('Failed to add contact.' + sLineBreak +
+                         'Status: ' + Response.StatusCode.ToString + sLineBreak +
+                         'Response: ' + Response.ContentAsString(TEncoding.UTF8),
+                         TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], 0);
+            end;
+          finally
+            ContentStream.Free;
+          end;
+        finally
+          HttpClient.Free;
+        end;
+      finally
+        PersonObj.Free;
+      end;
+    end;
+  finally
+    AddForm.Free;
+  end;
+end;
+/////----- End of Calls Create Form -----/////
+
+end.

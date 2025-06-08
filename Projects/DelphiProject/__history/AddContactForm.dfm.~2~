@@ -1,0 +1,93 @@
+object frmAddContact: TfrmAddContact
+  Left = 0
+  Top = 0
+  Caption = 'Add Contact'
+  ClientHeight = 194
+  ClientWidth = 240
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  OnCreate = FormCreate
+  TextHeight = 15
+  object lblFirstName: TLabel
+    Left = 8
+    Top = 16
+    Width = 57
+    Height = 15
+    Caption = 'First Name'
+  end
+  object lblLastName: TLabel
+    Left = 8
+    Top = 46
+    Width = 56
+    Height = 15
+    Caption = 'Last Name'
+  end
+  object lblCity: TLabel
+    Left = 8
+    Top = 75
+    Width = 21
+    Height = 15
+    Caption = 'City'
+  end
+  object lblAddressLine: TLabel
+    Left = 8
+    Top = 112
+    Width = 67
+    Height = 15
+    Caption = 'Address Line'
+  end
+  object edtFirstName: TEdit
+    Left = 104
+    Top = 13
+    Width = 121
+    Height = 23
+    Hint = 'Enter First Name Please'
+    TabOrder = 0
+  end
+  object edtLastName: TEdit
+    Left = 104
+    Top = 43
+    Width = 121
+    Height = 23
+    Hint = 'Enter Last Name Please'
+    TabOrder = 1
+  end
+  object edtCity: TEdit
+    Left = 104
+    Top = 72
+    Width = 121
+    Height = 23
+    Hint = 'Enter City name please'
+    TabOrder = 2
+  end
+  object edtAddressLine: TEdit
+    Left = 104
+    Top = 109
+    Width = 121
+    Height = 23
+    Hint = 'Please enter Address'
+    TabOrder = 3
+  end
+  object btnCancel: TButton
+    Left = 8
+    Top = 152
+    Width = 75
+    Height = 25
+    Hint = 'Cancels without saving, and closes window'
+    Caption = 'Cancel'
+    TabOrder = 4
+  end
+  object btnOk: TButton
+    Left = 150
+    Top = 152
+    Width = 75
+    Height = 25
+    Hint = 'Saves data, and close window'
+    Caption = 'OK'
+    TabOrder = 5
+  end
+end
